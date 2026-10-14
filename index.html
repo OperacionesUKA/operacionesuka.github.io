@@ -16,19 +16,27 @@
   html, body { margin: 0; height: 100%; background: #F3F5F9; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
   #inicio { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #FFFFFF; transition: opacity .4s; z-index: 2; }
-  #inicio img { width: 150px; height: 150px; border-radius: 32px; box-shadow: 0 8px 24px rgba(27, 58, 107, .18); }
+  #inicio img.logo { width: 110px; height: 110px; border-radius: 32px; box-shadow: 0 8px 24px rgba(27, 58, 107, .18); }
   #inicio b { font-size: 26px; color: #1B3A6B; }
   #inicio span { font-size: 15px; color: #56627A; }
-  #inicio i { width: 34px; height: 34px; border: 4px solid #DCE3EE; border-top-color: #1B3A6B; border-radius: 50%; animation: g 1s linear infinite; margin-top: 10px; }
+  #inicio .anim { width: 130px; height: auto; border-radius: 0; box-shadow: none; margin-top: 6px; }
   #inicio.listo { opacity: 0; pointer-events: none; }
   #sinred { display: none; position: fixed; left: 16px; right: 16px; bottom: 16px; background: #7A1D0B; color: #FFFFFF; padding: 12px 16px; border-radius: 12px; font-size: 15px; z-index: 3; text-align: center; }
-  @keyframes g { to { transform: rotate(360deg); } }
+  #avisoPush { display: none; position: fixed; left: 12px; right: 12px; bottom: 12px; background: #1B3A6B; color: #FFFFFF; padding: 12px 14px; border-radius: 14px; z-index: 4; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); font-size: 15px; }
+  #avisoPush .fila { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  #avisoPush button { border: 0; border-radius: 10px; padding: 10px 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #avisoPush .si { background: #FFFFFF; color: #1B3A6B; }
+  #avisoPush .no { background: transparent; color: #FFFFFF; border: 1.5px solid #FFFFFF; }
 </style>
 </head>
 <body>
-<div id="inicio"><img src="icon-512.png" alt="Logo de Un Kilo de Ayuda" style="width:110px;height:110px"><b>Operaciones UKA</b><span>Un Kilo de Ayuda</span><img src="carga-familia.webp" alt="" style="width:130px;height:auto;border-radius:0;box-shadow:none"></div>
+<div id="inicio"><img class="logo" src="icon-512.png" alt="Logo de Un Kilo de Ayuda"><b>Operaciones UKA</b><span>Un Kilo de Ayuda</span><img class="anim" src="carga-familia.webp" alt=""></div>
 <div id="sinred">Sin conexión a internet. La plataforma se abrirá cuando vuelva la señal.</div>
+<div id="avisoPush"><b>¿Recibir avisos de Operaciones UKA?</b><br><span id="avisoPushT">Alertas importantes, tu agenda del día y salidas sin capturar, aunque la app esté cerrada.</span><div class="fila"><button class="si" id="pushSi">Activar avisos</button><button class="no" id="pushNo">Ahora no</button></div></div>
 <iframe id="app" title="Operaciones UKA" allow="camera; geolocation; clipboard-write; fullscreen"></iframe>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script>
   // Enlace de la plataforma: el que termina en /exec (Implementar → Gestionar implementaciones).
   var PLATAFORMA = 'https://script.google.com/macros/s/AKfycbzdI9nOwtsqxSlJaBPxB1xpK63gOZiSey1UoEhf-L0Cz-TP28XDGeWyQtzNaIWDtnz0XA/exec';
@@ -48,6 +56,84 @@
   window.addEventListener('offline', function () { sinred.style.display = 'block'; });
   abrir();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { });
+
+  // ---------- Avisos en el celular (Firebase Cloud Messaging) ----------
+  // La plataforma (dentro del marco) saluda al entrar; la portada pide el permiso, obtiene la clave del celular y se la regresa.
+  var PUSH = { fuente: null, origen: '', mensajes: null };
+  var esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var instalada = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  var avisoPush = document.getElementById('avisoPush');
+
+  function pushListo() {
+    return !!('serviceWorker' in navigator && 'Notification' in window && 'PushManager' in window && window.firebase && window.UKA_FIREBASE &&
+      String(UKA_FIREBASE.apiKey).indexOf('PEGA_AQUI') < 0);
+  }
+  function pushMensajes() {
+    if (PUSH.mensajes) return PUSH.mensajes;
+    if (!firebase.apps.length) firebase.initializeApp(UKA_FIREBASE);
+    PUSH.mensajes = firebase.messaging();
+    // Con la app abierta, Firebase no muestra el aviso solo: lo mostramos nosotros.
+    PUSH.mensajes.onMessage(function (m) {
+      var n = m.notification || {};
+      navigator.serviceWorker.ready.then(function (reg) { reg.showNotification(n.title || 'Operaciones UKA', { body: n.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: (m.data && m.data.clave) || 'uka', data: { liga: './' } }); });
+    });
+    return PUSH.mensajes;
+  }
+  function aPlataforma(msg) { if (PUSH.fuente) { try { PUSH.fuente.postMessage(msg, PUSH.origen); } catch (e) { } } }
+  function equipoNombre() {
+    var ua = navigator.userAgent;
+    return (esIOS ? 'iPhone/iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'Equipo') + (instalada ? ' · app' : ' · navegador');
+  }
+  function estadoPush() {
+    var ok = pushListo();
+    return { uka: 'shell', soporta: ok, ios: esIOS, instalada: instalada, permiso: ('Notification' in window) ? Notification.permission : 'no',
+      motivo: ok ? '' : (!window.UKA_FIREBASE || String(UKA_FIREBASE.apiKey).indexOf('PEGA_AQUI') > -1 ? 'Falta configurar Firebase en la portada.' : 'Este navegador no permite avisos.') };
+  }
+  function pushToken(nuevo) {
+    navigator.serviceWorker.ready.then(function (reg) {
+      return pushMensajes().getToken({ vapidKey: UKA_VAPID, serviceWorkerRegistration: reg });
+    }).then(function (t) {
+      if (t) aPlataforma({ uka: 'push-token', token: t, equipo: equipoNombre(), nuevo: !!nuevo });
+    }).catch(function (e) { aPlataforma({ uka: 'push-error', texto: 'No se pudieron activar los avisos: ' + (e && e.message ? e.message : e), permiso: Notification.permission }); });
+  }
+  function pushPedir() {
+    avisoPush.style.display = 'none';
+    Notification.requestPermission().then(function (p) {
+      if (p === 'granted') pushToken(true);
+      else aPlataforma({ uka: 'push-error', texto: p === 'denied' ? 'Bloqueaste los avisos. Actívalos en los ajustes del celular.' : 'No se activaron los avisos.', permiso: p });
+    });
+  }
+  function pospuesto() { try { return Number(localStorage.getItem('ukaPushNo') || 0) > Date.now(); } catch (e) { return false; } }
+  document.getElementById('pushSi').addEventListener('click', pushPedir);
+  document.getElementById('pushNo').addEventListener('click', function () {
+    avisoPush.style.display = 'none';
+    try { localStorage.setItem('ukaPushNo', String(Date.now() + 604800000)); } catch (e) { }
+  });
+
+  window.addEventListener('message', function (e) {
+    var host = '';
+    try { host = new URL(e.origin).hostname; } catch (x) { return; }
+    if (host.slice(-22) !== '.googleusercontent.com' && host !== 'script.google.com') return;
+    var d = e.data || {};
+    if (d.uka !== 'hola' && d.uka !== 'push-activar' && d.uka !== 'push-quitar') return;
+    PUSH.fuente = e.source; PUSH.origen = e.origin;
+    var est = estadoPush();
+    if (d.uka === 'hola') {
+      aPlataforma(est);
+      if (!est.soporta) return;
+      if (Notification.permission === 'granted') pushToken(false);
+      else if (Notification.permission === 'default' && !pospuesto() && (!esIOS || instalada)) avisoPush.style.display = 'block';
+    }
+    if (d.uka === 'push-activar') {
+      if (!est.soporta) { aPlataforma({ uka: 'push-error', texto: esIOS && !instalada ? 'En iPhone primero agrega la app a la pantalla de inicio.' : 'Este navegador no permite avisos.', permiso: est.permiso }); return; }
+      if (Notification.permission === 'granted') { pushToken(true); return; }
+      if (Notification.permission === 'denied') { aPlataforma({ uka: 'push-error', texto: 'Los avisos están bloqueados. Actívalos en los ajustes del celular.', permiso: 'denied' }); return; }
+      // En Android el toque en la plataforma alcanza para pedir el permiso. En iPhone hay que tocar el botón de la portada.
+      if (esIOS) avisoPush.style.display = 'block'; else pushPedir();
+    }
+    if (d.uka === 'push-quitar' && est.soporta) { try { pushMensajes().deleteToken(); } catch (x) { } }
+  });
+
 </script>
 </body>
 </html>
