@@ -19,7 +19,15 @@
   #inicio img.logo { width: 110px; height: 110px; border-radius: 32px; box-shadow: 0 8px 24px rgba(27, 58, 107, .18); }
   #inicio b { font-size: 26px; color: #1B3A6B; }
   #inicio span { font-size: 15px; color: #56627A; }
-  #inicio .anim { width: 130px; height: auto; border-radius: 0; box-shadow: none; margin-top: 6px; }
+  #inicio .anim-caja { width: 300px; max-width: 86vw; height: 160px; display: flex; align-items: center; justify-content: center; }
+  #inicio .anim { max-width: 100%; max-height: 160px; height: auto; transition: opacity .35s; }
+  #inicio .anim.svg { width: 300px; }
+  #inicio .anim.webp { width: 150px; }
+  #inicio .anim.fuera { opacity: 0; }
+  #inicio .estado { font-size: 14px; color: #1B3A6B; font-weight: 600; min-height: 18px; }
+  #inicio .tip { max-width: 340px; margin: 0 20px; min-height: 58px; text-align: center; font-size: 15px; line-height: 1.4; color: #56627A; transition: opacity .35s; }
+  #inicio .tip.fuera { opacity: 0; }
+  #inicio #directo { display: none; border: 1.5px solid #1B3A6B; background: #FFFFFF; color: #1B3A6B; border-radius: 10px; padding: 10px 16px; font-size: 15px; font-weight: 700; cursor: pointer; }
   #inicio.listo { opacity: 0; pointer-events: none; }
   #sinred { display: none; position: fixed; left: 16px; right: 16px; bottom: 16px; background: #7A1D0B; color: #FFFFFF; padding: 12px 16px; border-radius: 12px; font-size: 15px; z-index: 3; text-align: center; }
   #avisoPush { display: none; position: fixed; left: 12px; right: 12px; bottom: 12px; background: #1B3A6B; color: #FFFFFF; padding: 12px 14px; border-radius: 14px; z-index: 4; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); font-size: 15px; }
@@ -30,7 +38,7 @@
 </style>
 </head>
 <body>
-<div id="inicio"><img class="logo" src="icon-512.png" alt="Logo de Un Kilo de Ayuda"><b>Operaciones UKA</b><span>Un Kilo de Ayuda</span><img class="anim" src="carga-familia.webp" alt=""></div>
+<div id="inicio"><div class="anim-caja"><img id="animImg" class="anim svg" src="carga-40.svg" alt="Un Kilo de Ayuda, 40 años"></div><b>Operaciones UKA</b><span class="estado" id="estado">Conectando con la plataforma…</span><p class="tip" id="tip"></p><button id="directo" type="button">Abrir directo</button></div>
 <div id="sinred">Sin conexión a internet. La plataforma se abrirá cuando vuelva la señal.</div>
 <div id="avisoPush"><b>¿Recibir avisos de Operaciones UKA?</b><br><span id="avisoPushT">Alertas importantes, tu agenda del día y salidas sin capturar, aunque la app esté cerrada.</span><div class="fila"><button class="si" id="pushSi">Activar avisos</button><button class="no" id="pushNo">Ahora no</button></div></div>
 <iframe id="app" title="Operaciones UKA" allow="camera; geolocation; clipboard-write; fullscreen"></iframe>
@@ -48,10 +56,65 @@
     sinred.style.display = 'none';
     marco.src = PLATAFORMA;
   }
+  // La pantalla de inicio se queda hasta que la app avisa que ya está lista (o 25 s después de cargar, por si es una versión anterior).
+  var lista = false;
+  function quitarInicio() {
+    if (lista) return;
+    lista = true;
+    setTimeout(function () { inicio.classList.add('listo'); clearInterval(rotar); }, Math.max(0, 1200 - (Date.now() - desde)));
+  }
   marco.addEventListener('load', function () {
     if (!marco.src) return;
-    setTimeout(function () { inicio.classList.add('listo'); }, Math.max(0, 900 - (Date.now() - desde)));
+    document.getElementById('estado').textContent = 'Preparando tu información…';
+    setTimeout(quitarInicio, 25000);
   });
+  window.addEventListener('message', function (e) {
+    var host = '';
+    try { host = new URL(e.origin).hostname; } catch (x) { return; }
+    if (host.slice(-22) !== '.googleusercontent.com' && host !== 'script.google.com') return;
+    if (e.data && e.data.uka === 'listo') quitarInicio();
+  });
+
+  // Animaciones que se turnan (la de los 40 años completa, las demás 5 s) y tips de uso.
+  var ANIMS = [['carga-40.svg', 'svg', 8000], ['carga-familia.webp', 'webp', 5000], ['carga-papas.webp', 'webp', 5000], ['carga-papa-hijo.webp', 'webp', 5000], ['carga-mama-hija.webp', 'webp', 5000]];
+  var TIPS = [
+    'En Propuesta de rutas, toca Analizar escenarios para ver opciones con cambios ligeros o desde cero.',
+    'Las comunidades con 65 niños o más llevan 👥 2 grupos: atenderlas en dos grupos mejora la calidad.',
+    'Lo ideal son 3 grupos por día; nunca más de 4 ni de 150 niños por brigada.',
+    'Al reprogramar, la ⭐ indica que la ruta ya pasa cerca de esa comunidad.',
+    '¿Reprogramaste por error? Abre la fecha nueva y toca Deshacer reprogramación.',
+    'Activa los avisos en tu celular en Administración › Notificaciones.',
+    'Al imprimir o guardar en PDF, elige las secciones o deja el acomodo recomendado.',
+    'En la Captura del día, registra el peso de los niños NAR con Registrar peso.',
+    'En el Tablero, las secciones se abren y se cierran: deja a la vista lo que más usas.',
+    'Toma la ubicación de cada comunidad en campo: así los tiempos de ruta son más exactos.',
+    'En el mapa de la visita ves el clima por hora de cada parada y los avisos de ciclones.',
+    'Un cambio de día se avisa en persona a la comunidad en la visita anterior.',
+    'El gerente autoriza las salidas del almacén por semana o la visita completa.',
+    'El médico confirma los medicamentos que recibe y pide reposición desde su botiquín.',
+    'En Seguimiento de embarazadas, la Hb se ajusta sola por la altitud de la comunidad.',
+    'Descarga las bases NAR y de embarazadas en Excel para analizarlas.',
+    '¿Dudas? En Administración › Manual de uso está la guía de tu puesto.'
+  ];
+  var animImg = document.getElementById('animImg'), tipEl = document.getElementById('tip');
+  var ai = 0, ti = Math.floor(Math.random() / (1 / TIPS.length));
+  tipEl.textContent = '💡 ' + TIPS[ti];
+  function cambiarAnim() {
+    ai = (ai + 1) % ANIMS.length;
+    animImg.classList.add('fuera');
+    setTimeout(function () { animImg.src = ANIMS[ai][0]; animImg.className = 'anim ' + ANIMS[ai][1]; }, 350);
+    setTimeout(cambiarAnim, ANIMS[ai][2]);
+  }
+  setTimeout(cambiarAnim, ANIMS[0][2]);
+  var rotar = setInterval(function () {
+    tipEl.classList.add('fuera');
+    setTimeout(function () { ti = (ti + 1) % TIPS.length; tipEl.textContent = '💡 ' + TIPS[ti]; tipEl.classList.remove('fuera'); }, 350);
+  }, 5500);
+
+  // Si tarda más de 20 s, se ofrece abrir la plataforma directo.
+  var directo = document.getElementById('directo');
+  directo.addEventListener('click', function () { location.href = PLATAFORMA; });
+  setTimeout(function () { if (!lista) directo.style.display = 'block'; }, 20000);
   window.addEventListener('online', function () { if (!marco.src) abrir(); else sinred.style.display = 'none'; });
   window.addEventListener('offline', function () { sinred.style.display = 'block'; });
   abrir();
