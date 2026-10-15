@@ -1,7 +1,7 @@
 // Guarda la pantalla de inicio y el ícono para que la app abra rápido y se pueda instalar.
 // También recibe los avisos de Firebase cuando la app está cerrada.
-const VERSION = 'uka-v3';
-const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'firebase-config.js', 'icon-192.png', 'icon-512.png', 'carga-familia.webp', 'carga-papas.webp', 'carga-papa-hijo.webp', 'carga-mama-hija.webp'];
+const VERSION = 'uka-v4';
+const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'firebase-config.js', 'icon-192.png', 'icon-512.png', 'carga-familia.webp', 'carga-papas.webp', 'carga-papa-hijo.webp', 'carga-mama-hija.webp', 'carga-40.svg'];
 
 try {
   importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js', 'firebase-config.js');
