@@ -25,7 +25,9 @@
   #inicio .anim.webp { width: 150px; }
   #inicio .anim.fuera { opacity: 0; }
   #inicio .estado { font-size: 14px; color: #1B3A6B; font-weight: 600; min-height: 18px; }
-  #inicio .tip { max-width: 340px; margin: 0 20px; min-height: 58px; text-align: center; font-size: 15px; line-height: 1.4; color: #56627A; transition: opacity .35s; }
+  #inicio .tip { max-width: 560px; margin: 0 20px; min-height: 160px; text-align: center; font-size: 30px; line-height: 1.3; color: #56627A; transition: opacity .35s; }
+  #inicio .tip b { display: block; font-size: 30px; color: #1B3A6B; margin-bottom: 6px; }
+  #inicio .tip span { display: block; font-size: 30px; line-height: 1.3; color: #56627A; }
   #inicio .tip.fuera { opacity: 0; }
   #inicio #directo { display: none; border: 1.5px solid #1B3A6B; background: #FFFFFF; color: #1B3A6B; border-radius: 10px; padding: 10px 16px; font-size: 15px; font-weight: 700; cursor: pointer; }
   #inicio.listo { opacity: 0; pointer-events: none; }
@@ -38,7 +40,7 @@
 </style>
 </head>
 <body>
-<div id="inicio"><div class="anim-caja"><img id="animImg" class="anim svg" src="carga-40.svg" alt="Un Kilo de Ayuda, 40 años"></div><b>Operaciones UKA</b><span class="estado" id="estado">Conectando con la plataforma…</span><p class="tip" id="tip"></p><button id="directo" type="button">Abrir directo</button></div>
+<div id="inicio"><div class="anim-caja"><img id="animImg" class="anim svg" src="carga-40.svg" alt="Un Kilo de Ayuda, 40 años"></div><b>Operaciones UKA</b><span class="estado" id="estado">Conectando con la plataforma…</span><div class="tip" id="tip"><b>Tips</b><span id="tipTxt"></span></div><button id="directo" type="button">Abrir directo</button></div>
 <div id="sinred">Sin conexión a internet. La plataforma se abrirá cuando vuelva la señal.</div>
 <div id="avisoPush"><b>¿Recibir avisos de Operaciones UKA?</b><br><span id="avisoPushT">Alertas importantes, tu agenda del día y salidas sin capturar, aunque la app esté cerrada.</span><div class="fila"><button class="si" id="pushSi">Activar avisos</button><button class="no" id="pushNo">Ahora no</button></div></div>
 <iframe id="app" title="Operaciones UKA" allow="camera; geolocation; clipboard-write; fullscreen"></iframe>
@@ -75,8 +77,7 @@
     if (e.data && e.data.uka === 'listo') quitarInicio();
   });
 
-  // Animaciones que se turnan (la de los 40 años completa, las demás 5 s) y tips de uso.
-  var ANIMS = [['carga-40.svg', 'svg', 8000], ['carga-familia.webp', 'webp', 5000], ['carga-papas.webp', 'webp', 5000], ['carga-papa-hijo.webp', 'webp', 5000], ['carga-mama-hija.webp', 'webp', 5000]];
+  // La carga inicial muestra la animación de los 40 años (las de la familia se usan dentro de la app) y tips de uso.
   var TIPS = [
     'En Propuesta de rutas, toca Analizar escenarios para ver opciones con cambios ligeros o desde cero.',
     'Las comunidades con 65 niños o más llevan 👥 2 grupos: atenderlas en dos grupos mejora la calidad.',
@@ -96,20 +97,13 @@
     'Descarga las bases NAR y de embarazadas en Excel para analizarlas.',
     '¿Dudas? En Administración › Manual de uso está la guía de tu puesto.'
   ];
-  var animImg = document.getElementById('animImg'), tipEl = document.getElementById('tip');
-  var ai = 0, ti = Math.floor(Math.random() / (1 / TIPS.length));
-  tipEl.textContent = '💡 ' + TIPS[ti];
-  function cambiarAnim() {
-    ai = (ai + 1) % ANIMS.length;
-    animImg.classList.add('fuera');
-    setTimeout(function () { animImg.src = ANIMS[ai][0]; animImg.className = 'anim ' + ANIMS[ai][1]; }, 350);
-    setTimeout(cambiarAnim, ANIMS[ai][2]);
-  }
-  setTimeout(cambiarAnim, ANIMS[0][2]);
+  var tipEl = document.getElementById('tip'), tipTxt = document.getElementById('tipTxt');
+  var ti = Math.floor(Math.random() / (1 / TIPS.length));
+  tipTxt.textContent = TIPS[ti];
   var rotar = setInterval(function () {
     tipEl.classList.add('fuera');
-    setTimeout(function () { ti = (ti + 1) % TIPS.length; tipEl.textContent = '💡 ' + TIPS[ti]; tipEl.classList.remove('fuera'); }, 350);
-  }, 5500);
+    setTimeout(function () { ti = (ti + 1) % TIPS.length; tipTxt.textContent = TIPS[ti]; tipEl.classList.remove('fuera'); }, 350);
+  }, 6500);
 
   // Si tarda más de 20 s, se ofrece abrir la plataforma directo.
   var directo = document.getElementById('directo');
