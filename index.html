@@ -41,20 +41,32 @@
 </head>
 <body>
 <div id="inicio"><div class="anim-caja"><img id="animImg" class="anim svg" src="carga-40.svg" alt="Un Kilo de Ayuda, 40 años"></div><b>Operaciones UKA</b><span class="estado" id="estado">Conectando con la plataforma…</span><div class="tip" id="tip"><b>Tips</b><span id="tipTxt"></span></div><button id="directo" type="button">Abrir directo</button></div>
-<div id="sinred">Sin conexión a internet. La plataforma se abrirá cuando vuelva la señal.</div>
+<div id="sinred"><span id="sinredT">Sin conexión a internet. La plataforma se abrirá cuando vuelva la señal.</span> <button id="usarOff" type="button" style="display:none;margin-left:8px;border:0;border-radius:8px;padding:6px 10px;font-weight:700;background:#FFFFFF;color:#7A1D0B;cursor:pointer">Abrir con lo guardado</button></div>
 <div id="avisoPush"><b>¿Recibir avisos de Operaciones UKA?</b><br><span id="avisoPushT">Alertas importantes, tu agenda del día y salidas sin capturar, aunque la app esté cerrada.</span><div class="fila"><button class="si" id="pushSi">Activar avisos</button><button class="no" id="pushNo">Ahora no</button></div></div>
 <iframe id="app" title="Operaciones UKA" allow="camera; geolocation; clipboard-write; fullscreen"></iframe>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="offline.js"></script>
 <script>
   // Enlace de la plataforma: el que termina en /exec (Implementar → Gestionar implementaciones).
   var PLATAFORMA = 'https://script.google.com/macros/s/AKfycbzdI9nOwtsqxSlJaBPxB1xpK63gOZiSey1UoEhf-L0Cz-TP28XDGeWyQtzNaIWDtnz0XA/exec';
 
   var marco = document.getElementById('app'), inicio = document.getElementById('inicio'), sinred = document.getElementById('sinred');
   var desde = Date.now();
+  // Sin conexión: si este equipo tiene respaldo, se abre la app con lo guardado.
+  function sinConexion() {
+    sinred.style.display = 'block';
+    if (!window.ukaOffDisponible) return;
+    ukaOffDisponible().then(function (o) {
+      if (!o) return;
+      document.getElementById('usarOff').style.display = 'inline-block';
+      if (!marco.src) ukaOffAbrir();
+    });
+  }
+  document.getElementById('usarOff').addEventListener('click', function () { if (window.ukaOffAbrir) ukaOffAbrir(); });
   function abrir() {
-    if (!navigator.onLine) { sinred.style.display = 'block'; return; }
+    if (!navigator.onLine) { sinConexion(); return; }
     sinred.style.display = 'none';
     marco.src = PLATAFORMA;
   }
@@ -108,9 +120,14 @@
   // Si tarda más de 20 s, se ofrece abrir la plataforma directo.
   var directo = document.getElementById('directo');
   directo.addEventListener('click', function () { location.href = PLATAFORMA; });
-  setTimeout(function () { if (!lista) directo.style.display = 'block'; }, 20000);
+  setTimeout(function () {
+    if (lista) return;
+    directo.style.display = 'block';
+    // Hay "señal" pero la plataforma no carga (red muy débil): se ofrece usar lo guardado.
+    if (window.ukaOffDisponible) ukaOffDisponible().then(function (o) { if (o && !lista) { sinred.style.display = 'block'; document.getElementById('sinredT').textContent = 'La plataforma no termina de cargar.'; document.getElementById('usarOff').style.display = 'inline-block'; } });
+  }, 20000);
   window.addEventListener('online', function () { if (!marco.src) abrir(); else sinred.style.display = 'none'; });
-  window.addEventListener('offline', function () { sinred.style.display = 'block'; });
+  window.addEventListener('offline', function () { if (!document.getElementById('offApp')) sinConexion(); });
   abrir();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { });
 
