@@ -1,6 +1,6 @@
 // Guarda la pantalla de inicio y el ícono para que la app abra rápido y se pueda instalar.
 // También recibe los avisos de Firebase cuando la app está cerrada.
-const VERSION = 'uka-v8';
+const VERSION = 'uka-v9';
 const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'firebase-config.js', 'offline.js', 'icon-192.png', 'icon-512.png', 'carga-40.svg', 'carga-familia.svg', 'carga-papas.svg', 'carga-papa-hijo.svg', 'carga-mama-hija.svg', 'carga-v1-familia.svg', 'carga-v1-papas.svg', 'carga-v1-papa-hijo.svg', 'carga-v1-mama-hija.svg'];
 
 try {
