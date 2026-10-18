@@ -110,6 +110,9 @@
     return window.ukaOffDisponible().then(function (o) {
       if (!o) return false;
       if (o.vencido) { mensaje('El respaldo de este equipo tiene más de 7 días. Conéctate a internet para actualizarlo.'); return false; }
+      // Copia de la app incompleta (guardada antes de la corrección del 18 de octubre): hay que abrir la app una vez con internet.
+      var cod = String(o.paq.html || '');
+      if (cod.indexOf("include('") > -1 || cod.indexOf('function leerToken') < 0) { mensaje('La copia de la app en este equipo está incompleta. Abre la app una vez con internet para actualizarla.'); return false; }
       OFFS = o;
       PEND = o.pendientes;
       try { localStorage.setItem('brigToken', o.perfil.token); } catch (e) { }
