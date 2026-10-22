@@ -73,8 +73,28 @@
       return;
     }
     if (d.uka === 'off-hola') {
-      Promise.all([get('kv', 'paquete'), get('kv', 'respaldo|' + u), colaDe(u)]).then(function (r) {
-        responder({ uka: 'off-estado', usuario: u, version: r[0] ? r[0].version : '', respaldo: r[1] || '', pendientes: r[2].length });
+      Promise.all([get('kv', 'paquete'), get('kv', 'respaldo|' + u), colaDe(u), get('kv', 'sel|' + u)]).then(function (r) {
+        responder({ uka: 'off-estado', usuario: u, version: r[0] ? r[0].version : '', respaldo: r[1] || '', pendientes: r[2].length, sel: r[3] || null });
+      });
+    }
+    // Qué guarda esta persona en este equipo. Lo que desmarca se borra al momento (las capturas por enviar están aparte y no se tocan).
+    if (d.uka === 'off-sel') {
+      var quitar = Array.isArray(d.quitados) ? d.quitados : [];
+      put('kv', 'sel|' + u, { sel: d.sel || {}, quitados: quitar, semana: d.semana || '', t: Date.now() }).then(function () {
+        return todos('resp');
+      }).then(function (l) {
+        return Promise.all((l || []).filter(function (x) { return x.usuario === u && quitar.indexOf(x.fn) > -1; }).map(function (x) { return del('resp', claveResp(u, x.fn, x.args)); }));
+      }).then(function () { responder({ uka: 'off-sel-hecho', usuario: u }); });
+    }
+    // Cuánto ocupa cada cosa guardada (para mostrarlo al elegir).
+    if (d.uka === 'off-tamanos') {
+      Promise.all([todos('resp'), get('kv', 'paquete'), colaDe(u)]).then(function (r) {
+        var por = {}, total = 0;
+        (r[0] || []).forEach(function (x) { if (x.usuario !== u) return; var n = JSON.stringify(x.data || '').length; por[x.fn] = (por[x.fn] || 0) + n; total += n; });
+        var app = r[1] ? String(r[1].html || '').length + JSON.stringify(r[1].modulos || '').length + String(r[1].logo || '').length : 0;
+        var cola = JSON.stringify(r[2] || []).length;
+        var fin = function (est) { responder({ uka: 'off-tamanos', usuario: u, porFn: por, datos: total, app: app, cola: cola, usado: est ? est.usage : null, cuota: est ? est.quota : null }); };
+        if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(fin, function () { fin(null); }); else fin(null);
       });
     }
     if (d.uka === 'off-paquete') put('kv', 'paquete', { version: d.version, html: d.html, modulos: d.modulos, logo: d.logo || '', t: Date.now() });
@@ -96,9 +116,10 @@
   window.ukaOffDisponible = function () {
     return Promise.all([get('kv', 'paquete'), get('kv', 'perfil')]).then(function (r) {
       if (!r[0] || !r[1]) return null;
-      return Promise.all([get('kv', 'respaldo|' + r[1].usuario), get('kv', 'rol|' + r[1].usuario), colaDe(r[1].usuario)]).then(function (x) {
+      return Promise.all([get('kv', 'respaldo|' + r[1].usuario), get('kv', 'rol|' + r[1].usuario), colaDe(r[1].usuario), get('kv', 'sel|' + r[1].usuario)]).then(function (x) {
         if (!x[0]) return null;
-        return { paq: r[0], perfil: r[1].perfil, usuario: r[1].usuario, respaldo: x[0], rol: x[1] || '', pendientes: x[2].length, vencido: horasDesde(x[0]) > VENCE_HORAS };
+        return { paq: r[0], perfil: r[1].perfil, usuario: r[1].usuario, respaldo: x[0], rol: x[1] || '', pendientes: x[2].length, vencido: horasDesde(x[0]) > VENCE_HORAS,
+          quitados: x[3] && Array.isArray(x[3].quitados) ? x[3].quitados : [] };
       });
     }).catch(function () { return null; });
   };
@@ -213,7 +234,9 @@
     return true;
   };
 
-  window.ukaOffInfo = function () { return OFFS ? { respaldo: OFFS.respaldo, campo: OFFS.rol === 'campo', pendientes: PEND } : {}; };
+  window.ukaOffInfo = function () {
+    return OFFS ? { respaldo: OFFS.respaldo, campo: OFFS.rol === 'campo', pendientes: PEND, sinCaptura: (OFFS.quitados || []).indexOf('diaCaptura') > -1 } : {};
+  };
   window.ukaOffReconectar = function () {
     if (navigator.onLine) { location.reload(); return; }
     mensaje('Todavía no hay señal. Lo capturado se queda guardado en este equipo.');
@@ -367,6 +390,7 @@
       return ESCRIBIR[fn](a).then(salida, function (e) { throw String((e && e.message) || e); });
     }
     return buscar(fn, a.slice(1)).then(function (x) {
+      if (!x && (OFFS.quitados || []).indexOf(fn) > -1) throw 'Sin conexión: no elegiste guardar esta información en este equipo. Puedes cambiarlo en 📶 cuando tengas señal.';
       if (!x) throw 'Sin conexión: esta información no está guardada en este equipo. Ábrela con internet para tenerla después.';
       return salida(x.data);
     });
