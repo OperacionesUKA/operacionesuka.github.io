@@ -3,7 +3,7 @@
 // Todo se guarda solo en este equipo (IndexedDB de operacionesuka.github.io). Aquí no hay datos: solo el código que los guarda.
 // Sin internet, se abre la misma app con lo guardado. Lo que se captura queda en una cola y la app lo envía al volver la señal.
 (function () {
-  var DB = null, OFFS = null, PEND = 0;
+  var DB = null, OFFS = null, PEND = 0, ENLINEA = null, ESPERA = null;
   var VENCE_HORAS = 168, MAX_FOTOS_PLAN = 3, MAX_FOTOS_COLA = 30;
 
   // ---------- Base de datos del equipo ----------
@@ -50,9 +50,28 @@
     try { host = new URL(e.origin).hostname; } catch (x) { return; }
     if (host.slice(-22) !== '.googleusercontent.com' && host !== 'script.google.com') return;
     var d = e.data || {};
+    // La app en línea ya cargó: si se estaba usando lo guardado, se regresa a en línea.
+    if ((d.uka === 'listo' || d.uka === 'hola' || d.uka === 'off-hola') && document.getElementById('offApp')) {
+      ENLINEA = { src: e.source, org: e.origin, u: d.usuario || '' };
+      window.ukaOffPasarEnLinea(false);
+    }
     if (String(d.uka || '').indexOf('off-') !== 0 || !d.usuario) return;
     var src = e.source, org = e.origin, u = String(d.usuario);
     var responder = function (m) { try { src.postMessage(m, org); } catch (x) { } };
+    ENLINEA = { src: src, org: org, u: u };
+    if (d.uka === 'off-usar') { window.ukaOffAbrir().then(function (ok) { if (!ok) mensaje('Este equipo no tiene respaldo para usar sin conexión.'); }); return; }
+    // Captura que no se pudo enviar por falta de señal: se guarda en la cola (y en lo guardado, si el día está en el respaldo).
+    if (d.uka === 'off-encolar') {
+      var a = Array.isArray(d.args) ? d.args : [];
+      var antes = OFFS;
+      if (!OFFS || OFFS.usuario !== u) OFFS = { usuario: u, rol: 'campo', temporal: true };
+      var fin = function (r) { if (OFFS && OFFS.temporal) OFFS = antes; responder({ uka: 'off-encolado', usuario: u, id: d.id, ok: r.ok, texto: r.texto }); };
+      if (!ESCRITURAS[d.fn]) { fin({ ok: false, texto: 'Esa acción necesita internet.' }); return; }
+      ESCRIBIR[d.fn](a).then(function () { fin({ ok: true, texto: 'pendiente de envío' }); }, function () {
+        encolar(d.fn, a.slice(1), 'Captura sin señal').then(function () { fin({ ok: true, texto: 'pendiente de envío' }); }, function () { fin({ ok: false, texto: 'No se pudo guardar en el equipo.' }); });
+      });
+      return;
+    }
     if (d.uka === 'off-hola') {
       Promise.all([get('kv', 'paquete'), get('kv', 'respaldo|' + u), colaDe(u)]).then(function (r) {
         responder({ uka: 'off-estado', usuario: u, version: r[0] ? r[0].version : '', respaldo: r[1] || '', pendientes: r[2].length });
@@ -134,6 +153,64 @@
       if (sr) sr.style.display = 'none';
       return true;
     });
+  };
+
+  // Regresar a en línea. Si la persona está capturando (ventana abierta, escribiendo o en Captura del día), no se interrumpe:
+  // se muestra «Ya hay señal · Pasar a en línea» y se vuelve a intentar cada 5 segundos.
+  function ocupadoOff(f) {
+    try {
+      var w = f.contentWindow, doc = f.contentDocument;
+      var capa = doc.getElementById('capa');
+      if (capa && capa.style.display === 'flex') return true;
+      var act = doc.activeElement;
+      if (act && ['INPUT', 'TEXTAREA', 'SELECT'].indexOf(act.tagName) > -1) return true;
+      if (w.TAB === 'cap') return true;
+    } catch (e) { }
+    return false;
+  }
+  function barraSenal(ver) {
+    var b = document.getElementById('offSenal');
+    if (!ver) { if (b) b.style.display = 'none'; return; }
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'offSenal';
+      b.setAttribute('style', 'position:fixed;left:16px;right:16px;bottom:16px;z-index:9;background:#2E7D32;color:#FFFFFF;padding:10px 14px;border-radius:12px;font-size:15px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap');
+      b.innerHTML = '<span>Ya hay señal.</span>';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Pasar a en línea';
+      btn.setAttribute('style', 'border:0;border-radius:8px;padding:6px 12px;font-weight:700;background:#FFFFFF;color:#2E7D32;cursor:pointer');
+      btn.addEventListener('click', function () { window.ukaOffPasarEnLinea(true); });
+      b.appendChild(btn);
+      document.body.appendChild(b);
+    }
+    b.style.display = 'flex';
+  }
+  window.ukaOffPasarEnLinea = function (forzar) {
+    var f = document.getElementById('offApp');
+    if (!f) return false;
+    if (!forzar && ocupadoOff(f)) {
+      barraSenal(true);
+      clearTimeout(ESPERA);
+      ESPERA = setTimeout(function () { window.ukaOffPasarEnLinea(false); }, 5000);
+      return false;
+    }
+    clearTimeout(ESPERA);
+    barraSenal(false);
+    f.remove();
+    OFFS = null;
+    var app = document.getElementById('app');
+    if (app) app.style.visibility = 'visible';
+    var sr = document.getElementById('sinred');
+    if (sr) sr.style.display = 'none';
+    // La app en línea revisa de nuevo si hay capturas por enviar.
+    if (ENLINEA && ENLINEA.u) {
+      var u = ENLINEA.u;
+      Promise.all([get('kv', 'paquete'), get('kv', 'respaldo|' + u), colaDe(u)]).then(function (r) {
+        try { ENLINEA.src.postMessage({ uka: 'off-estado', usuario: u, version: r[0] ? r[0].version : '', respaldo: r[1] || '', pendientes: r[2].length }, ENLINEA.org); } catch (x) { }
+      });
+    }
+    return true;
   };
 
   window.ukaOffInfo = function () { return OFFS ? { respaldo: OFFS.respaldo, campo: OFFS.rol === 'campo', pendientes: PEND } : {}; };

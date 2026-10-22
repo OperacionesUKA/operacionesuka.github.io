@@ -86,7 +86,7 @@
     var host = '';
     try { host = new URL(e.origin).hostname; } catch (x) { return; }
     if (host.slice(-22) !== '.googleusercontent.com' && host !== 'script.google.com') return;
-    if (e.data && e.data.uka === 'listo') quitarInicio();
+    if (e.data && (e.data.uka === 'listo' || e.data.uka === 'hola' || e.data.uka === 'off-hola')) { quitarInicio(); if (!document.getElementById('offApp')) sinred.style.display = 'none'; }
   });
 
   // La carga inicial muestra la animación de los 40 años (las de la familia se usan dentro de la app) y tips de uso.
@@ -117,6 +117,19 @@
     setTimeout(function () { ti = (ti + 1) % TIPS.length; tipTxt.textContent = TIPS[ti]; tipEl.classList.remove('fuera'); }, 350);
   }, 6500);
 
+  // Si a los 3 s la plataforma no ha respondido (señal débil o sin datos) y el equipo tiene respaldo, se ofrece usar lo guardado.
+  // Mientras tanto la plataforma sigue cargando; cuando termina, la app regresa sola a en línea.
+  setTimeout(function () {
+    if (lista || document.getElementById('offApp') || !window.ukaOffDisponible) return;
+    ukaOffDisponible().then(function (o) {
+      if (!o || lista || document.getElementById('offApp')) return;
+      sinred.style.display = 'block';
+      document.getElementById('sinredT').textContent = navigator.onLine ? 'La señal está lenta.' : 'Sin conexión a internet.';
+      document.getElementById('usarOff').textContent = 'Usar sin conexión';
+      document.getElementById('usarOff').style.display = 'inline-block';
+    });
+  }, 3000);
+
   // Si tarda más de 20 s, se ofrece abrir la plataforma directo.
   var directo = document.getElementById('directo');
   directo.addEventListener('click', function () { location.href = PLATAFORMA; });
@@ -126,7 +139,23 @@
     // Hay "señal" pero la plataforma no carga (red muy débil): se ofrece usar lo guardado.
     if (window.ukaOffDisponible) ukaOffDisponible().then(function (o) { if (o && !lista) { sinred.style.display = 'block'; document.getElementById('sinredT').textContent = 'La plataforma no termina de cargar.'; document.getElementById('usarOff').style.display = 'inline-block'; } });
   }, 20000);
-  window.addEventListener('online', function () { if (!marco.src) abrir(); else sinred.style.display = 'none'; });
+  // Mientras se usa lo guardado, cada 30 s se revisa si ya hay señal; si la hay, se vuelve a cargar la plataforma
+  // y, cuando avisa que está lista, la app regresa sola a en línea.
+  var probando = false;
+  function recargarEnLinea() { probando = false; marco.src = PLATAFORMA + (PLATAFORMA.indexOf('?') > -1 ? '&' : '?') + 'r=' + Date.now(); }
+  function sondear() {
+    if (!document.getElementById('offApp') || probando || !navigator.onLine) return;
+    probando = true;
+    var listoYa = false;
+    var t = setTimeout(function () { if (!listoYa) probando = false; }, 6000);
+    fetch(PLATAFORMA, { mode: 'no-cors', cache: 'no-store' }).then(function () { listoYa = true; clearTimeout(t); recargarEnLinea(); }, function () { clearTimeout(t); probando = false; });
+  }
+  setInterval(sondear, 30000);
+  window.addEventListener('online', function () {
+    if (!marco.src) abrir();
+    else if (document.getElementById('offApp')) setTimeout(sondear, 2000);
+    else sinred.style.display = 'none';
+  });
   window.addEventListener('offline', function () { if (!document.getElementById('offApp')) sinConexion(); });
   abrir();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { });
