@@ -1,89 +1,75 @@
-/* Pídele · Service worker: guarda la app para abrir rápido y muestra las notificaciones con la app cerrada. */
-const VERSION = 'pidele-v2.7.0';
-const COMPARTIDO = 'pidele-compartido'; // comprobante que llega desde "Compartir" de otra app
-const BASE = ['./', './index.html', './manifest.json', './firebase-config.js', './icons/icon-192.png', './icons/icon-512.png'];
+// Guarda la pantalla de inicio y el ícono para que la app abra rápido y se pueda instalar.
+// También recibe los avisos de Firebase cuando la app está cerrada.
+const VERSION = 'uka-v10';
+// Lo indispensable para abrir sin conexión; las animaciones se guardan aparte (si una falla, no detiene lo demás).
+const BASICOS = ['./', 'index.html', 'offline.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const ESPERA_RED = 3000;
+const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'firebase-config.js', 'offline.js', 'icon-192.png', 'icon-512.png', 'carga-40.svg', 'carga-familia.svg', 'carga-papas.svg', 'carga-papa-hijo.svg', 'carga-mama-hija.svg', 'carga-v1-familia.svg', 'carga-v1-papas.svg', 'carga-v1-papa-hijo.svg', 'carga-v1-mama-hija.svg'];
 
-/* ---------- Notificaciones (Firebase Cloud Messaging) ---------- */
 try {
-  importScripts('./firebase-config.js');
-  if (self.FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey) {
-    importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
-      'https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
-    firebase.initializeApp(FIREBASE_CONFIG);
-    firebase.messaging().onBackgroundMessage(p => mostrar(p.data || {}));
+  importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js', 'firebase-config.js');
+  if (self.UKA_FIREBASE && String(self.UKA_FIREBASE.apiKey).indexOf('PEGA_AQUI') < 0) {
+    firebase.initializeApp(self.UKA_FIREBASE);
+    firebase.messaging();
   }
-} catch (e) { /* sin Firebase: la app sigue funcionando con actualizaciones al abrirla */ }
+} catch (e) { }
 
-function mostrar(d) {
-  return self.registration.showNotification(d.titulo || 'Pídele', {
-    body: d.cuerpo || '', icon: './icons/icon-192.png', badge: './icons/icon-192.png',
-    tag: d.tag || undefined, renotify: !!d.tag, vibrate: [200, 100, 200], data: { url: d.url || './' }
+// Se guarda archivo por archivo: si uno no se puede descargar, los demás sí quedan guardados.
+self.addEventListener('install', function (e) {
+  e.waitUntil(caches.open(VERSION).then(function (c) {
+    return Promise.all(ARCHIVOS.map(function (a) { return c.add(a).catch(function () { }); }));
+  }).then(function () { return self.skipWaiting(); }));
+});
+
+// Al activar, solo se borran las versiones anteriores si la nueva ya tiene la portada (si no, se conservan como respaldo).
+self.addEventListener('activate', function (e) {
+  e.waitUntil(caches.open(VERSION).then(function (c) {
+    return Promise.all(BASICOS.map(function (a) { return c.match(a); }));
+  }).then(function (r) {
+    const completa = r.every(function (x) { return !!x; });
+    return caches.keys().then(function (ks) {
+      if (!completa) return null;
+      return Promise.all(ks.filter(function (k) { return k !== VERSION; }).map(function (k) { return caches.delete(k); }));
+    });
+  }).then(function () { return self.clients.claim(); }));
+});
+
+function deGuardado(req) {
+  return caches.match(req, { ignoreSearch: true }).then(function (r) {
+    if (r || req.mode !== 'navigate') return r;
+    return caches.match('./').then(function (x) { return x || caches.match('index.html', { ignoreSearch: true }); });
   });
 }
 
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
-  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => {
-    const abierta = l.find(c => c.url.startsWith(self.registration.scope));
-    if (abierta) { abierta.postMessage({ abrir: url }); return abierta.focus(); }
-    return clients.openWindow(url);
-  }));
-});
-
-/* ---------- Caché de la app ---------- */
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys()
-    .then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== COMPARTIDO).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
-});
-
-/*
- * - Archivos de la app: se responden AL INSTANTE desde la caché y se actualizan por detrás
- *   (antes se esperaba a la red, lo que hacía lenta la apertura con mala señal).
- * - Librerías con versión fija (mapas, Firebase): caché primero, nunca cambian.
- * - Servidor, mapas (teselas), imágenes de Drive: siempre a la red.
- */
-self.addEventListener('fetch', e => {
-  // "Compartir" desde la app del banco (Android con Pídele instalada): se guarda el archivo y se abre la app
-  if (e.request.method === 'POST' && new URL(e.request.url).pathname.endsWith('/compartir')) {
-    e.respondWith((async () => {
-      try {
-        const f = await e.request.formData();
-        const a = f.getAll('archivo').find(x => x && x.size) || null;
-        if (a) {
-          const c = await caches.open(COMPARTIDO);
-          await c.put('./compartido-archivo', new Response(a, { headers: { 'Content-Type': a.type || 'application/octet-stream', 'X-Nombre': encodeURIComponent(a.name || 'comprobante') } }));
-        }
-      } catch (err) { /* sin archivo: la app avisa */ }
-      return Response.redirect(new URL('./?compartido=1', self.registration.scope).href, 303);
-    })());
-    return;
-  }
-  if (e.request.method !== 'GET') return;
-  const u = new URL(e.request.url);
-  const propio = u.origin === self.location.origin;
-  const libreria = u.hostname === 'cdnjs.cloudflare.com' || (u.hostname === 'www.gstatic.com' && u.pathname.startsWith('/firebasejs/'));
-  if (libreria) {
-    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-      if (res.ok) { const copia = res.clone(); caches.open(VERSION).then(c => c.put(e.request, copia)); }
-      return res;
-    })));
-    return;
-  }
-  if (!propio) return;
-  const red = fetch(e.request).then(res => {
-    if (res.ok) { const copia = res.clone(); caches.open(VERSION).then(c => c.put(e.request, copia)); }
-    return res;
+// Primero intenta con internet. Si no hay red, o la red tarda más de 3 segundos y el archivo ya está guardado, usa lo guardado
+// (la descarga sigue y actualiza lo guardado para la siguiente vez).
+self.addEventListener('fetch', function (e) {
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return;
+  const req = e.request;
+  const red = fetch(req).then(function (r) {
+    if (r && r.ok) { const copia = r.clone(); caches.open(VERSION).then(function (c) { c.put(req, copia); }); }
+    return r;
   });
-  e.respondWith(
-    caches.match(e.request, { ignoreSearch: true })
-      .then(r => r || red)
-      .catch(() => caches.match('./index.html'))
-  );
-  e.waitUntil(red.catch(() => { }));
+  e.respondWith(new Promise(function (listo) {
+    let hecho = false;
+    const dar = function (r) { if (!hecho && r) { hecho = true; listo(r); } };
+    const reloj = setTimeout(function () { deGuardado(req).then(dar); }, ESPERA_RED);
+    red.then(function (r) { clearTimeout(reloj); dar(r); }).catch(function () {
+      clearTimeout(reloj);
+      deGuardado(req).then(function (r) { if (r) dar(r); else if (!hecho) { hecho = true; listo(Response.error()); } });
+    });
+  }));
+  e.waitUntil(red.catch(function () { }));
+});
+
+// Al tocar un aviso mostrado con la app abierta, abre (o enfoca) la app. Los de Firebase los abre Firebase.
+self.addEventListener('notificationclick', function (e) {
+  const d = e.notification.data || {};
+  if (d.FCM_MSG) return;
+  e.notification.close();
+  const liga = d.liga || './';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (ws) {
+    for (let i = 0; i < ws.length; i++) { if ('focus' in ws[i]) return ws[i].focus(); }
+    return self.clients.openWindow(liga);
+  }));
 });
